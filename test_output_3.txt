@@ -1,0 +1,28 @@
+HF Token found (length: 37)
+
+----------------------------------------
+Testing Router (OpenAI Compatible) | Model: mistralai/Mistral-7B-Instruct-v0.2
+URL: https://router.huggingface.co/v1/chat/completions
+STATUS: 200
+BODY: {
+  "id": "oXUe8TQ-2j9zxn-9ce544570c567ae9",
+  "object": "chat.completion",
+  "created": 1771163349,
+  "model": "mistralai/Mistral-7B-Instruct-v0.2",
+  "metadata": {
+    "weight_version": "default"
+  },
+  "prompt": [],
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "The capital of France is **Paris**.",
+        "tool_calls": [],
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "seed": null
+ ...

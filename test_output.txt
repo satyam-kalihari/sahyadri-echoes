@@ -1,0 +1,40 @@
+HF Token found (length: 37)
+=== Testing Router Endpoint ===
+
+----------------------------------------
+Testing Router | Model: mistralai/Mistral-7B-Instruct-v0.2
+URL: https://router.huggingface.co/hf-inference/models/mistralai/Mistral-7B-Instruct-v0.2
+STATUS: 404
+BODY: Not Found
+
+----------------------------------------
+Testing Router | Model: gpt2
+URL: https://router.huggingface.co/hf-inference/models/gpt2
+STATUS: 404
+BODY: Not Found
+
+----------------------------------------
+Testing Router | Model: HuggingFaceH4/zephyr-7b-beta
+URL: https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta
+STATUS: 404
+BODY: Not Found
+
+=== Testing Standard Inference API ===
+
+----------------------------------------
+Testing Standard | Model: mistralai/Mistral-7B-Instruct-v0.2
+URL: https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2
+STATUS: 410
+BODY: {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+
+----------------------------------------
+Testing Standard | Model: gpt2
+URL: https://api-inference.huggingface.co/models/gpt2
+STATUS: 410
+BODY: {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+
+----------------------------------------
+Testing Standard | Model: HuggingFaceH4/zephyr-7b-beta
+URL: https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta
+STATUS: 410
+BODY: {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}

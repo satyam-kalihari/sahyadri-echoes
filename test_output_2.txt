@@ -1,0 +1,7 @@
+HF Token found (length: 37)
+
+----------------------------------------
+Testing Router (Simple Path)
+URL: https://router.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2
+STATUS: 404
+BODY: Not Found
