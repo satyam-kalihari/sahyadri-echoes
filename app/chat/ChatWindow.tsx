@@ -21,6 +21,7 @@ export default function ChatWindow({ location }: ChatWindowProps) {
             content: "Namaskar! I am Sahyadri. Select a location on the map, and I shall tell you its story."
         }
     ]);
+    const [language, setLanguage] = useState<"en" | "mr">("en");
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -33,12 +34,16 @@ export default function ChatWindow({ location }: ChatWindowProps) {
     // Greeting update on location change
     useEffect(() => {
         if (location) {
+            const greeting = language === "en"
+                ? `You have arrived at ${location.name}. ${location.description} What would you like to know?`
+                : `${location.name} येथे आपले स्वागत आहे. ${location.description} तुम्हाला काय जाणून घ्यायला आवडेल?`;
+
             setMessages(prev => [
                 ...prev,
-                { role: "assistant", content: `You have arrived at ${location.name}. ${location.description} What would you like to know?` }
+                { role: "assistant", content: greeting }
             ]);
         }
-    }, [location?.id]);
+    }, [location?.id, language]);
 
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
@@ -54,7 +59,8 @@ export default function ChatWindow({ location }: ChatWindowProps) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     messages: [...messages, userMessage],
-                    location: location
+                    location: location,
+                    language: language
                 })
             });
 
@@ -64,7 +70,7 @@ export default function ChatWindow({ location }: ChatWindowProps) {
             setMessages(prev => [...prev, { role: "assistant", content: data.content }]);
         } catch (error) {
             console.error(error);
-            setMessages(prev => [...prev, { role: "assistant", content: "I apologize, the winds are strong and I cannot hear you clearly. Please try again." }]);
+            setMessages(prev => [...prev, { role: "assistant", content: language === "en" ? "I apologize, the winds are strong and I cannot hear you clearly. Please try again." : "क्षमस्व, वारे खूप जोरात आहेत आणि मला तुमचे बोलणे स्पष्ट ऐकू येत नाही. कृपया पुन्हा प्रयत्न करा." }]);
         } finally {
             setIsLoading(false);
         }
@@ -74,8 +80,16 @@ export default function ChatWindow({ location }: ChatWindowProps) {
         <div className="w-full max-w-md h-[500px] flex flex-col bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
             {/* Header */}
             <div className="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between">
-                <h3 className="font-serif text-lg text-white/90 tracking-wide">Sahyadri Guide</h3>
-                <span className="text-xs text-teal-400 font-mono uppercase">{location?.name || "Maharashtra"}</span>
+                <div>
+                    <h3 className="font-serif text-lg text-white/90 tracking-wide">Sahyadri Guide</h3>
+                    <span className="text-xs text-teal-400 font-mono uppercase">{location?.name || "Maharashtra"}</span>
+                </div>
+                <button
+                    onClick={() => setLanguage(prev => prev === "en" ? "mr" : "en")}
+                    className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full text-xs text-white/80 transition-colors border border-white/5 font-medium"
+                >
+                    {language === "en" ? "English" : "मराठी"}
+                </button>
             </div>
 
             {/* Messages */}
@@ -94,7 +108,7 @@ export default function ChatWindow({ location }: ChatWindowProps) {
                     <div className="flex justify-start">
                         <div className="bg-white/5 rounded-2xl p-3 flex items-center gap-2">
                             <Loader2 className="w-4 h-4 animate-spin text-teal-400" />
-                            <span className="text-xs text-slate-400">Consulting the archives...</span>
+                            <span className="text-xs text-slate-400">{language === "en" ? "Consulting the archives..." : "अभिलेखागाराचा सल्ला घेत आहे..."}</span>
                         </div>
                     </div>
                 )}
@@ -109,7 +123,7 @@ export default function ChatWindow({ location }: ChatWindowProps) {
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                        placeholder="Ask about this place..."
+                        placeholder={language === "en" ? "Ask about this place..." : "या ठिकाणाबद्दल विचारा..."}
                         className="flex-1 bg-transparent border-none outline-none text-white placeholder-slate-500 text-sm"
                         disabled={isLoading}
                     />
