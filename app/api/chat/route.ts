@@ -85,7 +85,10 @@ ${contextText}`;
             throw lastError || new Error("All models failed.");
         }
 
-        return Response.json({ role: "assistant", content: resultText.trim() });
+        return Response.json({
+            role: "assistant",
+            content: resultText.replace(/\*/g, "").trim()
+        });
 
     } catch (error) {
         console.error("Chat API Fatal Error:", error);
