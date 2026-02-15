@@ -43,7 +43,8 @@ export default function ChatWindow({ location }: ChatWindowProps) {
                 { role: "assistant", content: greeting }
             ]);
         }
-    }, [location?.id, language]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location?.id]);
 
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
