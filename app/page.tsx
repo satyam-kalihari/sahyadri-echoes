@@ -27,7 +27,7 @@ export default function Home() {
       {/* Branding Overlay */}
       <div className="absolute top-8 left-8 z-10 pointer-events-none">
         <h1 className="font-serif text-4xl md:text-6xl font-bold text-transparent bg-clip-text bg-linear-to-r from-teal-200 to-blue-500 tracking-tighter drop-shadow-lg">
-          Sahyadri
+          Bharat Yatri
         </h1>
         <p className="text-slate-400 text-sm md:text-base tracking-widest uppercase mt-1 font-light ml-1">
           Echoes of Maharashtra

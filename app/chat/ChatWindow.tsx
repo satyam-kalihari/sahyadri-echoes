@@ -82,7 +82,7 @@ export default function ChatWindow({ location }: ChatWindowProps) {
             {/* Header */}
             <div className="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between">
                 <div>
-                    <h3 className="font-serif text-lg text-white/90 tracking-wide">Sahyadri Guide</h3>
+                    <h3 className="font-serif text-lg text-white/90 tracking-wide">Bharat Guide</h3>
                     <span className="text-xs text-teal-400 font-mono uppercase">{location?.name || "Maharashtra"}</span>
                 </div>
                 <button
