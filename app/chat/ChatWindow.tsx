@@ -18,7 +18,7 @@ export default function ChatWindow({ location }: ChatWindowProps) {
     const [messages, setMessages] = useState<Message[]>([
         {
             role: "assistant",
-            content: "Namaskar! I am Sahyadri. Select a location on the map, and I shall tell you its story."
+            content: "Namaskar! I am Bharat Yatri. Select a location on the map, and I shall tell you its story."
         }
     ]);
     const [language, setLanguage] = useState<"en" | "mr">("en");
