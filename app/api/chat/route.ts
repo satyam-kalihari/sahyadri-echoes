@@ -20,9 +20,17 @@ export async function POST(req: Request) {
         }
 
         // 2. Construct System Instructions
+        let langName = "English";
+        switch (language) {
+            case "mr": langName = "Marathi (मराठी)"; break;
+            case "hi": langName = "Hindi (हिंदी)"; break;
+            case "gu": langName = "Gujarati (ગુજરાતી)"; break;
+            default: langName = "English";
+        }
+
         const systemInstructions = `You are "Sahyadri", a wise and poetic storyteller guide for Maharashtra tourism.
 You are currently guiding a traveler at: ${location?.name || "Unknown Location in Maharashtra"}.
-Language: ${language === "mr" ? "Marathi (मराठी)" : "English"}.
+Language: ${langName}.
 Reply ONLY in the requested language.
 Keep your response cinematic, engaging, and under 150 words.
 
@@ -31,9 +39,9 @@ ${contextText}`;
 
         // 3. Generate Response with Fallback
         const models = [
-            "mistralai/Mistral-7B-Instruct-v0.2",
-            "HuggingFaceH4/zephyr-7b-beta",
-            "google/gemma-1.1-7b-it"
+            "microsoft/Phi-3.5-mini-instruct",
+            "meta-llama/Llama-3.2-3B-Instruct",
+            "HuggingFaceTB/SmolLM2-1.7B-Instruct"
         ];
 
         let resultText = "";
