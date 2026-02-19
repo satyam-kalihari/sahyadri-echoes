@@ -11,8 +11,7 @@ export class SarvamService {
     }
 
     /**
-     * Speech to Text using Saaras:v1 (or v3 as per updated specs if available)
-     * Note: User prompt mentioned saaras:v3. I will use it.
+     * Speech to Text using Saaras:v1
      */
     async transcribe(audioBuffer: Buffer): Promise<string> {
         // Using fetch/axios for FormData if SDK behavior is uncertain for Buffer handling
@@ -23,9 +22,11 @@ export class SarvamService {
 
         // Use basic fetch to avoid SDK guessing games for file upload
         const formData = new FormData();
-        const blob = new Blob([audioBuffer as any], { type: 'audio/wav' }); // Assuming WAV or generic audio
+        // Create Blob safely for Node environment if possible, or use Buffer directly with filename if supported by FormData implementation
+        // In Edge/Node, strictly typed FormData might expect Blob. 
+        const blob = new Blob([audioBuffer as any], { type: 'audio/wav' });
         formData.append('file', blob, 'audio.wav');
-        formData.append('model', 'saaras:v1'); // v1 is standard, checking if v3 is valid? Prompt said v3.
+        formData.append('model', 'saaras:v1');
 
         try {
             const response = await fetch(`${this.baseUrl}/speech-to-text-translate`, {

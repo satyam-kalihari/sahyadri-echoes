@@ -56,7 +56,7 @@ export default function ChatWindow({ location }: ChatWindowProps) {
             audioRef.current = audio;
             audio.play().catch(e => console.error("Audio playback error:", e));
         } catch (e) {
-            console.error("Failed to creat audio element", e);
+            console.error("Failed to create audio element", e);
         }
     };
 
@@ -186,7 +186,13 @@ export default function ChatWindow({ location }: ChatWindowProps) {
             }
         } else {
             // Start recording
-            await startRecording();
+            try {
+                await startRecording();
+            } catch (error) {
+                console.error("Failed to start recording:", error);
+                // Optionally show a toast or message
+                setMessages(prev => [...prev, { role: "assistant", content: "Could not access microphone. Please check permissions." }]);
+            }
         }
     };
 

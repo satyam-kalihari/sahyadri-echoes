@@ -37,7 +37,7 @@ export async function POST(req: Request) {
             const body = await req.json();
             const messages = body.messages || [];
             if (messages.length > 0) {
-                userQuery = messages[messages.length - 1].content;
+                userQuery = messages[messages.length - 1]?.content || "";
             }
             language = body.language || "en";
             locationName = body.location?.name || "Unknown Location";
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
             }
         }
 
-        // --- Step 3: Intelligence (OpenAI) ---
+        // --- Step 3: Intelligence (OpenAI/HF) ---
         // Retrieve Context
         let contextText = "";
         try {
@@ -103,11 +103,15 @@ export async function POST(req: Request) {
             console.warn("[Chat] Context retrieval failed:", err);
         }
 
+        // Sanitize inputs to prevent injection or formatting issues in the prompt
+        const sanitizedLocation = locationName.replace(/[`${}]/g, "").trim().substring(0, 100);
+        const sanitizedContext = contextText.replace(/[`$]/g, "").substring(0, 2000); // Limit context length
+
         // Construct Prompt
         const systemPrompt = `You are "Sahyadri", a wise and poetic storyteller guide for Maharashtra tourism.
-You are currently guiding a traveler at: ${locationName}.
+You are currently guiding a traveler at: ${sanitizedLocation}.
 Context from Sangraha:
-${contextText}
+${sanitizedContext}
 
 Instructions:
 - Answer the user's query based on the context and your knowledge.
@@ -115,16 +119,7 @@ Instructions:
 - Provide the response in simple English first.
 `;
 
-        //            console.log("[Chat] Calling Gemini...");
-        //         // Using gemini-2.0-flash as per available models list
-        //         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-        //         const result = await model.generateContent([
-        //             systemPrompt,
-        //             `User Query: ${englishQuery}`
-        //         ]);
-        //         const responseResult = result.response;
-        //         const englishResponse = responseResult.text();
-        //         console.log(`[Chat] Gemini Response: "${englishResponse}"`);
+        // ... (Gemini/OpenAI commented out)
 
         console.log("[Chat] Calling Hugging Face Inference...");
 
@@ -220,7 +215,7 @@ Instructions:
         console.error("[Chat] Fatal Error:", error);
         return Response.json({
             role: "assistant",
-            content: "I apologize, but I am unable to connect to the spirits of Sahyadri right now. " + (error.message || "")
+            content: "I apologize, but I am unable to connect to the spirits of Sahyadri right now."
         }, { status: 500 });
     }
 }
