@@ -1,9 +1,11 @@
+
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, User, Bot, Loader2, ChevronDown, Languages } from "lucide-react";
+import { Send, User, Bot, Loader2, ChevronDown, Languages, Mic, Square } from "lucide-react";
 import { MapLocation } from "../map/MapView";
+import { useAudioRecorder } from "../hooks/useAudioRecorder";
 
 interface Message {
     role: "user" | "assistant";
@@ -26,52 +28,36 @@ export default function ChatWindow({ location }: ChatWindowProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const { isRecording, startRecording, stopRecording } = useAudioRecorder();
+    const audioRef = useRef<HTMLAudioElement | null>(null);
 
     // Auto-scroll to bottom
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
-    // Speak last message if it's from assistant and not the initial greeting (unless we want that too)
-    // We only speak when isLoading flips from true to false, to avoid speaking on load
-    const prevLoading = useRef(isLoading);
+    // Cleanup audio on unmount
     useEffect(() => {
-        if (prevLoading.current && !isLoading) {
-            const lastMsg = messages[messages.length - 1];
-            if (lastMsg.role === "assistant") {
-                speakText(lastMsg.content);
+        return () => {
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current = null;
             }
+        };
+    }, []);
+
+    const playAudio = (base64Audio: string) => {
+        if (!base64Audio) return;
+        try {
+            if (audioRef.current) {
+                audioRef.current.pause();
+            }
+            const audio = new Audio(`data:audio/wav;base64,${base64Audio}`);
+            audioRef.current = audio;
+            audio.play().catch(e => console.error("Audio playback error:", e));
+        } catch (e) {
+            console.error("Failed to creat audio element", e);
         }
-        prevLoading.current = isLoading;
-    }, [isLoading, messages]);
-
-    const speakText = (text: string) => {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-
-        // Try to find a suitable voice
-        const voices = window.speechSynthesis.getVoices();
-        let voice = null;
-
-        if (language === "en") {
-            // Prefer Indian English if available, or just English
-            voice = voices.find(v => v.lang === "en-IN") || voices.find(v => v.lang.startsWith("en"));
-        } else {
-            // For Marathi/Hindi/Gujarati, try to find a matching or Indian voice
-            voice = voices.find(v => v.lang.includes("hi") || v.lang.includes("mr") || v.lang.includes("gu") || v.lang.includes("IN"));
-        }
-
-        if (voice) utterance.voice = voice;
-
-        // Set locale
-        if (language === "mr") utterance.lang = "mr-IN";
-        else if (language === "hi") utterance.lang = "hi-IN";
-        else if (language === "gu") utterance.lang = "gu-IN";
-        else utterance.lang = "en-IN";
-
-        utterance.pitch = 1.0;
-        utterance.rate = 1.0;
-        window.speechSynthesis.speak(utterance);
     };
 
     // Greeting update on location change
@@ -96,7 +82,8 @@ export default function ChatWindow({ location }: ChatWindowProps) {
                 ...prev,
                 { role: "assistant", content: greeting }
             ]);
-            speakText(greeting);
+            // Note: We are not speaking this greeting via Sarvam to save API calls, 
+            // unless we want to trigger a "greet" API. For now, text only for initial greeting.
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location?.id]);
@@ -110,29 +97,74 @@ export default function ChatWindow({ location }: ChatWindowProps) {
         }
     };
 
-    const handleSend = async () => {
-        if (!input.trim() || isLoading) return;
+    const handleSend = async (audioBlob?: Blob) => {
+        if ((!input.trim() && !audioBlob) || isLoading) return;
 
-        const userMessage: Message = { role: "user", content: input };
-        setMessages(prev => [...prev, userMessage]);
-        setInput("");
+        // Optimistic UI update only for text
+        if (!audioBlob) {
+            const userMessage: Message = { role: "user", content: input };
+            setMessages(prev => [...prev, userMessage]);
+            setInput("");
+        } else {
+            // For audio, we might show a "Processing audio..." placeholder or just wait
+            // Let's rely on the loading state
+        }
+
         setIsLoading(true);
 
         try {
+            const formData = new FormData();
+
+            if (audioBlob) {
+                formData.append("audio", audioBlob, "recording.wav");
+                // When sending audio, we might not have text yet.
+                // The API will transcribe it.
+            } else {
+                formData.append("text", input);
+                // Attach history for context if needed, but the current API mainly looks at the current prompt
+                // The API can handle messages array in JSON, but mixed FormData is tricky.
+                // Let's send the last text query. The API is stateless regarding history mostly/uses simplistic context.
+                // To support history with Sarvam, we'd need to send history in formData stringified?
+                // For simplicity as per spec, we just send the current "text" or "audio".
+            }
+
+            formData.append("language", language);
+            formData.append("location", location?.name || "Unknown");
+            // Also append messages if we want history, but the API spec example was looking at "req.body.messages".
+            // Our updated route handles both. 
+            // If we use FormData, route expects 'text' field for the query.
+            // Let's append previous messages as JSON string if we want to be fancy, but the route implemented: 
+            // `userQuery = (formData.get("text") as string)`. 
+            // So it only takes the single turn. That is fine for this task.
+
             const response = await fetch("/api/chat", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    messages: [...messages, userMessage],
-                    location: location,
-                    language: language
-                })
+                body: formData, // fetch automatically sets Content-Type to multipart/form-data
             });
 
-            if (!response.ok) throw new Error("Failed to fetch");
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error("API Error:", response.status, errorText);
+                throw new Error(`Failed to fetch: ${response.status} ${errorText}`);
+            }
 
             const data = await response.json();
+
+            // If we sent audio, we didn't show the user's message yet.
+            // We could show the transcribed text if returned?
+            // The API doesn't return the transcribed text in the simplified response structure in the spec.
+            // Wait, I added `englishContent` and logic to `userQuery`.
+            // But I didn't return the *original* transcribed text in the final JSON explicitly in the spec.
+            // However, the user experience is better if they see what they said.
+            // But for now, let's just show the assistant response.
+
             setMessages(prev => [...prev, { role: "assistant", content: data.content }]);
+
+            // Play Audio
+            if (data.audio) {
+                playAudio(data.audio);
+            }
+
         } catch (error) {
             console.error(error);
             let errorMsg = "I apologize, the winds are strong and I cannot hear you clearly. Please try again.";
@@ -142,6 +174,19 @@ export default function ChatWindow({ location }: ChatWindowProps) {
             setMessages(prev => [...prev, { role: "assistant", content: errorMsg }]);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleMicClick = async () => {
+        if (isRecording) {
+            // Stop recording
+            const blob = await stopRecording();
+            if (blob) {
+                handleSend(blob);
+            }
+        } else {
+            // Start recording
+            await startRecording();
         }
     };
 
@@ -211,10 +256,11 @@ export default function ChatWindow({ location }: ChatWindowProps) {
                         <div className="bg-white/5 rounded-2xl p-3 flex items-center gap-2">
                             <Loader2 className="w-4 h-4 animate-spin text-teal-400" />
                             <span className="text-xs text-slate-400">
-                                {language === "en" && "Consulting the archives..."}
-                                {language === "mr" && "इतिहासाच्या शोधात..."}
-                                {language === "hi" && "इतिहास की तलाश में..."}
-                                {language === "gu" && "ઇતિહાસની શોધમાં..."}
+                                {isRecording ? "Listening..." :
+                                    (language === "en" ? "Consulting the archives..." :
+                                        language === "mr" ? "इतिहासाच्या शोधात..." :
+                                            language === "hi" ? "इतिहास की तलाश में..." :
+                                                "ઇતિહાસની શોધમાં...")}
                             </span>
                         </div>
                     </div>
@@ -224,24 +270,39 @@ export default function ChatWindow({ location }: ChatWindowProps) {
 
             {/* Input */}
             <div className="p-4 border-t border-white/10 bg-black/40">
-                <div className="flex items-center gap-2 bg-white/5 rounded-xl px-4 py-2 border border-white/10 focus-within:border-teal-500/50 transition-colors">
+                <div className="flex items-center gap-2 bg-white/5 rounded-xl px-2 py-2 border border-white/10 focus-within:border-teal-500/50 transition-colors">
                     <input
                         type="text"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleSend()}
                         placeholder={
-                            language === "en" ? "Ask about this place..." :
-                                language === "mr" ? "या ठिकाणाबद्दल विचारा..." :
-                                    language === "hi" ? "इस जगह के बारे में पूछें..." :
-                                        "આ જગ્યા વિશે પૂછો..."
+                            isRecording ? "Listening..." :
+                                (language === "en" ? "Ask about this place..." :
+                                    language === "mr" ? "या ठिकाणाबद्दल विचारा..." :
+                                        language === "hi" ? "इस जगह के बारे में पूछें..." :
+                                            "આ જગ્યા વિશે પૂછો...")
                         }
-                        className="flex-1 bg-transparent border-none outline-none text-white placeholder-slate-500 text-sm"
-                        disabled={isLoading}
+                        className="flex-1 bg-transparent border-none outline-none text-white placeholder-slate-500 text-sm px-2"
+                        disabled={isLoading || isRecording}
                     />
+
+                    {/* Mic Button */}
                     <button
-                        onClick={handleSend}
-                        disabled={isLoading || !input.trim()}
+                        onClick={handleMicClick}
+                        disabled={isLoading && !isRecording}
+                        className={`p-2 rounded-lg transition-all ${isRecording
+                            ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 animate-pulse"
+                            : "hover:bg-white/10 text-teal-400"
+                            }`}
+                    >
+                        {isRecording ? <Square className="w-4 h-4 fill-current" /> : <Mic className="w-4 h-4" />}
+                    </button>
+
+                    {/* Send Button */}
+                    <button
+                        onClick={() => handleSend()}
+                        disabled={isLoading || isRecording || !input.trim()}
                         className="p-2 rounded-lg hover:bg-white/10 text-teal-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     >
                         <Send className="w-4 h-4" />

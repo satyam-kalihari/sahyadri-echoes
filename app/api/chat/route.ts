@@ -1,50 +1,140 @@
 
-
 import { searchSangraha } from "../../lib/hf-stream";
+import { SarvamService } from "../../lib/sarvam";
+// import { GoogleGenerativeAI } from "@google/generative-ai";
+import { OpenAI } from "openai";
 
-const HF_TOKEN = process.env.HF_TOKEN;
+const SARVAM_API_KEY = process.env.SARVAM_API_KEY || "";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+
+// Initialize Services
+const sarvam = new SarvamService(SARVAM_API_KEY);
+// const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 export async function POST(req: Request) {
     try {
-        const { messages, location, language } = await req.json();
-        const lastMessage = messages[messages.length - 1];
-        const userQuery = lastMessage.content;
+        let userQuery = "";
+        let audioBuffer: Buffer | null = null;
+        let language = "en";
+        let locationName = "Unknown Location";
 
-        // 1. Retrieve Context
+        // Parse Request (Support both JSON and FormData)
+        const contentType = req.headers.get("content-type") || "";
+
+        if (contentType.includes("multipart/form-data")) {
+            const formData = await req.formData();
+            const file = formData.get("audio") as Blob | null;
+            if (file) {
+                const arrayBuffer = await file.arrayBuffer();
+                audioBuffer = Buffer.from(arrayBuffer);
+            }
+            userQuery = (formData.get("text") as string) || "";
+            language = (formData.get("language") as string) || "en";
+            locationName = (formData.get("location") as string) || "Unknown Location";
+        } else {
+            const body = await req.json();
+            const messages = body.messages || [];
+            if (messages.length > 0) {
+                userQuery = messages[messages.length - 1].content;
+            }
+            language = body.language || "en";
+            locationName = body.location?.name || "Unknown Location";
+        }
+
+        console.log(`[Chat] Request: Lang=${language}, Loc=${locationName}, HasAudio=${!!audioBuffer}, Text=${userQuery}`);
+
+        // --- Step 1: Input Processing (STT) ---
+        if (audioBuffer) {
+            console.log("[Chat] Transcribing audio...");
+            try {
+                const transcript = await sarvam.transcribe(audioBuffer);
+                if (transcript) {
+                    userQuery = transcript;
+                    console.log(`[Chat] Transcribed: "${userQuery}"`);
+                }
+            } catch (e) {
+                console.error("[Chat] Transcription failed:", e);
+                // Fallback: If text was also provided, use it. If not, error.
+                if (!userQuery) throw new Error("Audio transcription failed and no text provided.");
+            }
+        }
+
+        if (!userQuery.trim()) {
+            return Response.json({ role: "assistant", content: "I could not hear you. Please try again." });
+        }
+
+        // --- Step 2: Input Translation (to English) ---
+        let englishQuery = userQuery;
+        // Map frontend language codes to Sarvam/General codes if needed.
+        // Assuming: mr, hi, gu, en are consistent.
+        // Sarvam translate needs 'source_language_code'.
+        // Mappings: 'mr' -> 'mr-IN', 'hi' -> 'hi-IN', 'gu' -> 'gu-IN', 'en' -> 'en-IN'
+        const langMap: Record<string, string> = {
+            "mr": "mr-IN",
+            "hi": "hi-IN",
+            "gu": "gu-IN",
+            "en": "en-IN"
+        };
+        const sourceLangCode = langMap[language] || "en-IN";
+
+        // Determine if translation is needed (if language is not English)
+        if (language !== "en") {
+            try {
+                console.log(`[Chat] Translating input from ${language} to en...`);
+                englishQuery = await sarvam.translate(userQuery, sourceLangCode, "en-IN");
+                console.log(`[Chat] Translated Query: "${englishQuery}"`);
+            } catch (e) {
+                console.error("[Chat] Input translation failed:", e);
+                // Proceed with original text, hope model understands
+            }
+        }
+
+        // --- Step 3: Intelligence (OpenAI) ---
+        // Retrieve Context
         let contextText = "";
         try {
-            const contextDocs = await searchSangraha(userQuery);
-            contextText = contextDocs.map(d => d.text).join("\n");
+            const contextDocs = await searchSangraha(englishQuery);
+            if (contextDocs && Array.isArray(contextDocs)) {
+                contextText = contextDocs.map(d => d.text).join("\n");
+            }
         } catch (err) {
-            console.warn("Context retrieval failed, proceeding without context:", err);
+            console.warn("[Chat] Context retrieval failed:", err);
         }
 
-        // 2. Construct System Instructions
-        let langName = "English";
-        switch (language) {
-            case "mr": langName = "Marathi (मराठी)"; break;
-            case "hi": langName = "Hindi (हिंदी)"; break;
-            case "gu": langName = "Gujarati (ગુજરાતી)"; break;
-            default: langName = "English";
-        }
+        // Construct Prompt
+        const systemPrompt = `You are "Sahyadri", a wise and poetic storyteller guide for Maharashtra tourism.
+You are currently guiding a traveler at: ${locationName}.
+Context from Sangraha:
+${contextText}
 
-        const systemInstructions = `You are "Sahyadri", a wise and poetic storyteller guide for Maharashtra tourism.
-You are currently guiding a traveler at: ${location?.name || "Unknown Location in Maharashtra"}.
-Language: ${langName}.
-Reply ONLY in the requested language.
-Keep your response cinematic, engaging, and under 150 words.
+Instructions:
+- Answer the user's query based on the context and your knowledge.
+- Keep the response cinematic, engaging, and under 100 words.
+- Provide the response in simple English first.
+`;
 
-Context:
-${contextText}`;
+        //            console.log("[Chat] Calling Gemini...");
+        //         // Using gemini-2.0-flash as per available models list
+        //         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        //         const result = await model.generateContent([
+        //             systemPrompt,
+        //             `User Query: ${englishQuery}`
+        //         ]);
+        //         const responseResult = result.response;
+        //         const englishResponse = responseResult.text();
+        //         console.log(`[Chat] Gemini Response: "${englishResponse}"`);
 
-        // 3. Generate Response with Fallback
+        console.log("[Chat] Calling Hugging Face Inference...");
+
         const models = [
             "microsoft/Phi-3.5-mini-instruct",
             "meta-llama/Llama-3.2-3B-Instruct",
             "HuggingFaceTB/SmolLM2-1.7B-Instruct"
         ];
 
-        let resultText = "";
+        let englishResponse = "";
         let success = false;
         let lastError;
 
@@ -52,16 +142,16 @@ ${contextText}`;
             try {
                 console.log(`Trying model: ${model}`);
                 const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
+                    method: "POST",
                     headers: {
-                        Authorization: `Bearer ${HF_TOKEN}`,
+                        Authorization: `Bearer ${process.env.HF_TOKEN}`,
                         "Content-Type": "application/json",
                     },
-                    method: "POST",
                     body: JSON.stringify({
                         model: model,
                         messages: [
-                            { role: "system", content: systemInstructions },
-                            { role: "user", content: userQuery }
+                            { role: "system", content: systemPrompt },
+                            { role: "user", content: englishQuery }
                         ],
                         max_tokens: 250,
                         temperature: 0.7,
@@ -75,35 +165,62 @@ ${contextText}`;
 
                 const data = await response.json();
                 if (data.choices && data.choices.length > 0 && data.choices[0].message) {
-                    resultText = data.choices[0].message.content;
+                    englishResponse = data.choices[0].message.content || "";
                     success = true;
-                    break; // Exit loop on success
-                } else {
-                    throw new Error("Invalid response format from HF Router");
+                    break;
                 }
-
             } catch (err) {
                 console.warn(`Model ${model} failed:`, err);
                 lastError = err;
-                // Continue to next model
             }
         }
 
         if (!success) {
-            throw lastError || new Error("All models failed.");
+            throw lastError || new Error("All HF models failed.");
+        }
+
+        console.log(`[Chat] HF Response: "${englishResponse}"`);
+
+
+        // --- Step 4: Output Processing (Translation + TTS) ---
+        let finalResponseText = englishResponse;
+        let audioBase64 = "";
+
+        if (language !== "en") {
+            try {
+                console.log(`[Chat] Translating response to ${language}...`);
+                finalResponseText = await sarvam.translate(englishResponse, "en-IN", sourceLangCode);
+                console.log(`[Chat] Final Response: "${finalResponseText}"`);
+            } catch (e) {
+                console.error("[Chat] Output translation failed:", e);
+                // Fallback to English
+            }
+        }
+
+        // Generate Audio (TTS)
+        // Only generate audio if we have a valid response
+        if (finalResponseText) {
+            try {
+                console.log(`[Chat] Generating TTS for ${language}...`);
+                // Use the mapped language code for TTS
+                audioBase64 = await sarvam.speak(finalResponseText, sourceLangCode);
+            } catch (e) {
+                console.error("[Chat] TTS failed:", e);
+            }
         }
 
         return Response.json({
             role: "assistant",
-            content: resultText.replace(/\*/g, "").trim()
+            content: finalResponseText,
+            audio: audioBase64, // Frontend needs to play this
+            englishContent: englishResponse // Optional: for debugging
         });
 
-    } catch (error) {
-        console.error("Chat API Fatal Error:", error);
-        // Fallback response if API fails completely to keep UI usable
+    } catch (error: any) {
+        console.error("[Chat] Fatal Error:", error);
         return Response.json({
             role: "assistant",
-            content: "I apologize, the connection to the archives is weak right now. Please try asking again in a moment. (API usage limit or timeout)"
-        });
+            content: "I apologize, but I am unable to connect to the spirits of Sahyadri right now. " + (error.message || "")
+        }, { status: 500 });
     }
 }
