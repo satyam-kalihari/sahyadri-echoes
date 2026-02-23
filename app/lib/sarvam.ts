@@ -104,13 +104,13 @@ export class SarvamService {
                 body: JSON.stringify({
                     inputs: [text],
                     target_language_code: targetLang,
-                    speaker: "meera", // standard voice
+                    speaker: "anushka", // standard voice
                     pitch: 0,
                     pace: 1.0,
                     loudness: 1.5,
                     speech_sample_rate: 8000,
                     enable_preprocessing: true,
-                    model: "bulbul:v1"
+                    model: "bulbul:v2"
                 })
             });
 

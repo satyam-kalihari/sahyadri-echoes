@@ -145,7 +145,7 @@ export default function MapView({ onLocationSelect }: MapViewProps) {
             <div className="relative group cursor-pointer flex flex-col items-center justify-center -translate-y-full">
                 <div className="relative">
                     <div className="absolute inset-0 bg-blue-500 rounded-full blur-md opacity-50 group-hover:opacity-100 transition-opacity duration-300"></div>
-                    <MapPin className="text-blue-400 w-8 h-8 drop-shadow-lg relative z-10" fill="currentColor" />
+                    <MapPin className="text-blue-900 w-8 h-8 drop-shadow-lg relative z-10" fill="currentColor" />
                 </div>
                 <span className="mt-1 text-xs font-serif text-white bg-black/80 px-2 py-1 rounded backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity absolute top-full whitespace-nowrap z-20">
                     {name}
