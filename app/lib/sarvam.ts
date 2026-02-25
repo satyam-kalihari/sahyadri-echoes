@@ -38,7 +38,11 @@ export class SarvamService {
             }
 
             const data = await response.json();
-            console.log("[Sarvam STT] Response:", JSON.stringify(data));
+            if (process.env.ENABLE_SARVAM_DEBUG === "true") {
+                console.log("[Sarvam STT] Response:", JSON.stringify(data));
+            } else {
+                console.log(`[Sarvam STT] OK — language=${data.language_code || "N/A"}, transcript_length=${(data.transcript || "").length}`);
+            }
             return data.transcript || "";
         } catch (error) {
             console.error("[Sarvam STT] Error:", error);

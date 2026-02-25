@@ -58,8 +58,7 @@ export async function POST(req: Request) {
         if (audioBuffer) {
             console.log(`[Chat] Transcribing audio (${audioBuffer.length} bytes)...`);
             try {
-                const sttLangCode = langMap[language] || "unknown";
-                const transcript = await sarvam.transcribe(audioBuffer, sttLangCode);
+                const transcript = await sarvam.transcribe(audioBuffer, sourceLangCode);
                 if (transcript) {
                     userQuery = transcript;
                     console.log(`[Chat] Transcribed: "${userQuery}"`);
@@ -213,10 +212,10 @@ Instructions:
         });
 
     } catch (error: any) {
-        console.error("[Chat] Fatal Error:", error?.message || error);
+        console.error("[Chat] Fatal Error:", error);
         return Response.json({
             role: "assistant",
-            content: `I apologize, but I am unable to connect right now. Error: ${error?.message || "Unknown error"}`
+            content: "I apologize, but I am unable to connect right now. Please try again later."
         }, { status: 500 });
     }
 }
