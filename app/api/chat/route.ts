@@ -45,17 +45,29 @@ export async function POST(req: Request) {
 
         console.log(`[Chat] Request: Lang=${language}, Loc=${locationName}, HasAudio=${!!audioBuffer}, Text=${userQuery}`);
 
+        // Map frontend language codes to Sarvam/General BCP-47 codes
+        const langMap: Record<string, string> = {
+            "mr": "mr-IN",
+            "hi": "hi-IN",
+            "gu": "gu-IN",
+            "en": "en-IN"
+        };
+        const sourceLangCode = langMap[language] || "en-IN";
+
         // --- Step 1: Input Processing (STT) ---
         if (audioBuffer) {
-            console.log("[Chat] Transcribing audio...");
+            console.log(`[Chat] Transcribing audio (${audioBuffer.length} bytes)...`);
             try {
-                const transcript = await sarvam.transcribe(audioBuffer);
+                const sttLangCode = langMap[language] || "unknown";
+                const transcript = await sarvam.transcribe(audioBuffer, sttLangCode);
                 if (transcript) {
                     userQuery = transcript;
                     console.log(`[Chat] Transcribed: "${userQuery}"`);
+                } else {
+                    console.warn("[Chat] Transcription returned empty string");
                 }
-            } catch (e) {
-                console.error("[Chat] Transcription failed:", e);
+            } catch (e: any) {
+                console.error("[Chat] Transcription failed:", e?.message || e);
                 // Fallback: If text was also provided, use it. If not, error.
                 if (!userQuery) throw new Error("Audio transcription failed and no text provided.");
             }
@@ -67,17 +79,6 @@ export async function POST(req: Request) {
 
         // --- Step 2: Input Translation (to English) ---
         let englishQuery = userQuery;
-        // Map frontend language codes to Sarvam/General codes if needed.
-        // Assuming: mr, hi, gu, en are consistent.
-        // Sarvam translate needs 'source_language_code'.
-        // Mappings: 'mr' -> 'mr-IN', 'hi' -> 'hi-IN', 'gu' -> 'gu-IN', 'en' -> 'en-IN'
-        const langMap: Record<string, string> = {
-            "mr": "mr-IN",
-            "hi": "hi-IN",
-            "gu": "gu-IN",
-            "en": "en-IN"
-        };
-        const sourceLangCode = langMap[language] || "en-IN";
 
         // Determine if translation is needed (if language is not English)
         if (language !== "en") {
@@ -212,10 +213,10 @@ Instructions:
         });
 
     } catch (error: any) {
-        console.error("[Chat] Fatal Error:", error);
+        console.error("[Chat] Fatal Error:", error?.message || error);
         return Response.json({
             role: "assistant",
-            content: "I apologize, but I am unable to connect to the spirits of Sahyadri right now."
+            content: `I apologize, but I am unable to connect right now. Error: ${error?.message || "Unknown error"}`
         }, { status: 500 });
     }
 }

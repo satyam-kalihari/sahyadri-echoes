@@ -11,46 +11,37 @@ export class SarvamService {
     }
 
     /**
-     * Speech to Text using Saaras:v1
+     * Speech to Text using Saaras:v3
      */
-    async transcribe(audioBuffer: Buffer): Promise<string> {
-        // Using fetch/axios for FormData if SDK behavior is uncertain for Buffer handling
-        // But let's try to follow the "client" pattern if the SDK is simple.
-        // However, without knowing the exact SDK signature for file uploads, direct API call via fetch/axios is deeper but safer if documented.
-        // User provided snippets for translate/TTS but not STT.
-        // I will assume standard multipart/form-data for STT.
-
-        // Use basic fetch to avoid SDK guessing games for file upload
+    async transcribe(audioBuffer: Buffer, languageCode: string = "unknown"): Promise<string> {
         const formData = new FormData();
-        // Create Blob safely for Node environment if possible, or use Buffer directly with filename if supported by FormData implementation
-        // In Edge/Node, strictly typed FormData might expect Blob. 
-        const blob = new Blob([audioBuffer as any], { type: 'audio/wav' });
-        formData.append('file', blob, 'audio.wav');
-        formData.append('model', 'saaras:v1');
+        // Browser records audio/webm;codecs=opus — Sarvam supports WebM natively
+        const blob = new Blob([audioBuffer as any], { type: 'audio/webm' });
+        formData.append('file', blob, 'audio.webm');
+        formData.append('model', 'saaras:v3');
+        formData.append('language_code', languageCode);
 
         try {
-            const response = await fetch(`${this.baseUrl}/speech-to-text-translate`, {
-                // Actual endpoint might be /speech-to-text. Let's verify standard Sarvam endpoints if possible.
-                // Reverting to the provided SDK snippets style for consistency where possible.
-                // But for STT, let's look at the method: `transcribe`.
-
-                // Let's rely on standard Sarvam API structure: POST /speech-to-text
+            console.log(`[Sarvam STT] Sending ${audioBuffer.length} bytes, lang=${languageCode}`);
+            const response = await fetch(`${this.baseUrl}/speech-to-text`, {
                 method: 'POST',
                 headers: {
-                    'api-subscription-key': this.apiKey, // Sarvam usually uses this header
+                    'api-subscription-key': this.apiKey,
                 },
                 body: formData
             });
 
             if (!response.ok) {
                 const errorText = await response.text();
+                console.error(`[Sarvam STT] API Error: ${response.status} ${errorText}`);
                 throw new Error(`Sarvam STT Failed: ${response.status} ${errorText}`);
             }
 
             const data = await response.json();
+            console.log("[Sarvam STT] Response:", JSON.stringify(data));
             return data.transcript || "";
         } catch (error) {
-            console.error("Sarvam STT Error:", error);
+            console.error("[Sarvam STT] Error:", error);
             throw error;
         }
     }
