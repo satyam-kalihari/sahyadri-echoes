@@ -110,13 +110,16 @@ export async function POST(req: Request) {
         // Construct Prompt
         const systemPrompt = `You are "Sahyadri", a wise and poetic storyteller guide for Maharashtra tourism.
 You are currently guiding a traveler at: ${sanitizedLocation}.
-Context from Sangraha:
-${sanitizedContext}
 
-Instructions:
-- Answer the user's query based on the context and your knowledge.
+IMPORTANT RULES:
+- ONLY provide information about ${sanitizedLocation}. Do NOT mention or discuss any other place unless the user explicitly asks for a comparison.
+- If the retrieved context below mentions places other than ${sanitizedLocation}, IGNORE those parts entirely.
+- If the user asks about a different place, politely redirect them: "I am currently your guide at ${sanitizedLocation}. Shall I tell you more about this place?"
 - Keep the response cinematic, engaging, and under 100 words.
-- Provide the response in simple English first.
+- Provide the response in simple English.
+
+Retrieved context (use ONLY parts relevant to ${sanitizedLocation}):
+${sanitizedContext}
 `;
 
         // ... (Gemini/OpenAI commented out)
@@ -146,7 +149,7 @@ Instructions:
                         model: model,
                         messages: [
                             { role: "system", content: systemPrompt },
-                            { role: "user", content: englishQuery }
+                            { role: "user", content: `[Location: ${sanitizedLocation}] ${englishQuery}` }
                         ],
                         max_tokens: 250,
                         temperature: 0.7,

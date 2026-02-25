@@ -4,10 +4,12 @@
 
 export class SarvamService {
     private apiKey: string;
-    private baseUrl: string = "https://api.sarvam.ai"; // Assuming standard base URL, or use SDK
+    private baseUrl: string = "https://api.sarvam.ai";
+    private timeoutMs: number;
 
-    constructor(apiKey: string) {
+    constructor(apiKey: string, timeoutMs: number = 30000) {
         this.apiKey = apiKey;
+        this.timeoutMs = timeoutMs;
     }
 
     /**
@@ -21,6 +23,9 @@ export class SarvamService {
         formData.append('model', 'saaras:v3');
         formData.append('language_code', languageCode);
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+
         try {
             console.log(`[Sarvam STT] Sending ${audioBuffer.length} bytes, lang=${languageCode}`);
             const response = await fetch(`${this.baseUrl}/speech-to-text`, {
@@ -28,8 +33,11 @@ export class SarvamService {
                 headers: {
                     'api-subscription-key': this.apiKey,
                 },
-                body: formData
+                body: formData,
+                signal: controller.signal
             });
+
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 const errorText = await response.text();
@@ -38,13 +46,20 @@ export class SarvamService {
             }
 
             const data = await response.json();
-            if (process.env.ENABLE_SARVAM_DEBUG === "true") {
-                console.log("[Sarvam STT] Response:", JSON.stringify(data));
+            // Log safely — never expose raw transcript in production
+            if (process.env.ENABLE_SARVAM_DEBUG === "true" && process.env.NODE_ENV !== "production") {
+                const preview = (data.transcript || "").substring(0, 30);
+                console.log(`[Sarvam STT] Response: language=${data.language_code || "N/A"}, transcript_preview="${preview}...", keys=${Object.keys(data).join(",")}`);
             } else {
                 console.log(`[Sarvam STT] OK — language=${data.language_code || "N/A"}, transcript_length=${(data.transcript || "").length}`);
             }
             return data.transcript || "";
-        } catch (error) {
+        } catch (error: any) {
+            clearTimeout(timeoutId);
+            if (error?.name === "AbortError") {
+                console.error(`[Sarvam STT] Request timed out after ${this.timeoutMs}ms`);
+                throw new Error(`Sarvam STT timed out after ${this.timeoutMs}ms`);
+            }
             console.error("[Sarvam STT] Error:", error);
             throw error;
         }

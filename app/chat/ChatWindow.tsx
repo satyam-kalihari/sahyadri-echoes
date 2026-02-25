@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, User, Bot, Loader2, ChevronDown, Languages, Mic, Square } from "lucide-react";
 import { MapLocation } from "../map/MapView";
@@ -30,6 +30,7 @@ export default function ChatWindow({ location }: ChatWindowProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const { isRecording, startRecording, stopRecording } = useAudioRecorder();
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const handleSendRef = useRef<(audioBlob?: Blob) => void>(() => { });
 
     // Auto-scroll to bottom
     useEffect(() => {
@@ -100,14 +101,20 @@ export default function ChatWindow({ location }: ChatWindowProps) {
     const handleSend = async (audioBlob?: Blob) => {
         if ((!input.trim() && !audioBlob) || isLoading) return;
 
+        // Stop any currently playing bot audio
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+            audioRef.current = null;
+        }
+
         // Optimistic UI update only for text
         if (!audioBlob) {
             const userMessage: Message = { role: "user", content: input };
             setMessages(prev => [...prev, userMessage]);
             setInput("");
         } else {
-            // For audio, we might show a "Processing audio..." placeholder or just wait
-            // Let's rely on the loading state
+            // For audio, show a processing indicator via the loading state
         }
 
         setIsLoading(true);
@@ -177,20 +184,31 @@ export default function ChatWindow({ location }: ChatWindowProps) {
         }
     };
 
+    // Keep ref in sync so the silence callback always calls the latest handleSend
+    handleSendRef.current = handleSend;
+
     const handleMicClick = async () => {
         if (isRecording) {
-            // Stop recording
+            // Manual stop
             const blob = await stopRecording();
             if (blob) {
                 handleSend(blob);
             }
         } else {
-            // Start recording
+            // Stop any playing bot audio before recording
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current.currentTime = 0;
+                audioRef.current = null;
+            }
+            // Start recording with auto-stop on silence
             try {
-                await startRecording();
+                await startRecording((blob) => {
+                    // Called automatically when silence is detected — use ref for latest closure
+                    handleSendRef.current(blob);
+                });
             } catch (error) {
                 console.error("Failed to start recording:", error);
-                // Optionally show a toast or message
                 setMessages(prev => [...prev, { role: "assistant", content: "Could not access microphone. Please check permissions." }]);
             }
         }
