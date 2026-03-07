@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, User, Bot, Loader2, ChevronDown, Languages, Mic, Square } from "lucide-react";
+import { Send, User, Bot, Loader2, Mic, Square } from "lucide-react";
 import { MapLocation } from "../map/MapView";
 import { useAudioRecorder } from "../hooks/useAudioRecorder";
 
@@ -12,21 +12,32 @@ interface Message {
     content: string;
 }
 
-interface ChatWindowProps {
-    location: MapLocation | null;
+// Strip markdown bold/italic formatting from LLM responses
+function stripMarkdown(text: string): string {
+    return text
+        .replace(/\*\*(.+?)\*\*/g, '$1')  // **bold**
+        .replace(/\*(.+?)\*/g, '$1')      // *italic*
+        .replace(/^#+\s*/gm, '')           // # headings
+        .replace(/__(.+?)__/g, '$1')       // __underline__
+        .replace(/_(.+?)_/g, '$1');        // _italic_
 }
 
-export default function ChatWindow({ location }: ChatWindowProps) {
+const BRAND_NAME = "Bharat Yatri";
+
+interface ChatWindowProps {
+    location: MapLocation | null;
+    language: "en" | "mr" | "hi" | "gu";
+}
+
+export default function ChatWindow({ location, language }: ChatWindowProps) {
     const [messages, setMessages] = useState<Message[]>([
         {
             role: "assistant",
-            content: "Namaskar! I am Bharat Yatri. Select a location on the map, and I shall tell you its story."
+            content: `Namaskar! I am ${BRAND_NAME}. Select a location on the map, and I shall tell you its story.`
         }
     ]);
-    const [language, setLanguage] = useState<"en" | "mr" | "hi" | "gu">("en");
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const { isRecording, startRecording, stopRecording } = useAudioRecorder();
     const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -89,14 +100,7 @@ export default function ChatWindow({ location }: ChatWindowProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location?.id]);
 
-    const getLanguageLabel = (lang: string) => {
-        switch (lang) {
-            case "mr": return "मराठी";
-            case "hi": return "हिंदी";
-            case "gu": return "ગુજરાતી";
-            default: return "English";
-        }
-    };
+
 
     const handleSend = async (audioBlob?: Blob) => {
         if ((!input.trim() && !audioBlob) || isLoading) return;
@@ -217,50 +221,9 @@ export default function ChatWindow({ location }: ChatWindowProps) {
     return (
         <div className="w-full max-w-md h-[500px] flex flex-col bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
             {/* Header */}
-            <div className="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between">
-                <div>
-                    <h3 className="font-serif text-lg text-white/90 tracking-wide">Sahyadri Guide</h3>
-                    <span className="text-xs text-teal-400 font-mono uppercase">{location?.name || "Maharashtra"}</span>
-                </div>
-
-                <div className="relative">
-                    <button
-                        onClick={() => setIsLangMenuOpen(!isLangMenuOpen)}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-full text-xs text-white/90 transition-all border border-white/5 font-medium"
-                    >
-                        <Languages className="w-3 h-3 text-teal-400" />
-                        {getLanguageLabel(language)}
-                        <ChevronDown className={`w-3 h-3 opacity-60 transition-transform ${isLangMenuOpen ? "rotate-180" : ""}`} />
-                    </button>
-
-                    <AnimatePresence>
-                        {isLangMenuOpen && (
-                            <motion.div
-                                initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                                transition={{ duration: 0.1 }}
-                                className="absolute right-0 top-full mt-2 w-32 bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden shadow-xl z-50 flex flex-col py-1"
-                            >
-                                {["en", "mr", "hi", "gu"].map((lang) => (
-                                    <button
-                                        key={lang}
-                                        onClick={() => {
-                                            setLanguage(lang as any);
-                                            setIsLangMenuOpen(false);
-                                        }}
-                                        className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-white/10 ${language === lang
-                                            ? "text-teal-400 font-medium bg-teal-900/20"
-                                            : "text-slate-300"
-                                            }`}
-                                    >
-                                        {getLanguageLabel(lang)}
-                                    </button>
-                                ))}
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
+            <div className="p-4 border-b border-white/10 bg-white/5">
+                <h3 className="font-serif text-lg text-white/90 tracking-wide">{BRAND_NAME}</h3>
+                <span className="text-xs text-teal-400 font-mono uppercase">{location?.name || "Maharashtra"}</span>
             </div>
 
             {/* Messages */}
@@ -271,7 +234,7 @@ export default function ChatWindow({ location }: ChatWindowProps) {
                             ? "bg-teal-900/50 text-white rounded-br-none border border-teal-500/30"
                             : "bg-white/10 text-slate-200 rounded-bl-none border border-white/5"
                             }`}>
-                            {m.content}
+                            {stripMarkdown(m.content)}
                         </div>
                     </div>
                 ))}

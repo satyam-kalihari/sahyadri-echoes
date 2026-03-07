@@ -1,7 +1,7 @@
 
 import { searchSangraha } from "../../lib/hf-stream";
 import { SarvamService } from "../../lib/sarvam";
-// import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { OpenAI } from "openai";
 
 const SARVAM_API_KEY = process.env.SARVAM_API_KEY || "";
@@ -10,7 +10,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 
 // Initialize Services
 const sarvam = new SarvamService(SARVAM_API_KEY);
-// const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 export async function POST(req: Request) {
@@ -122,62 +122,92 @@ Retrieved context (use ONLY parts relevant to ${sanitizedLocation}):
 ${sanitizedContext}
 `;
 
-        // ... (Gemini/OpenAI commented out)
-
-        console.log("[Chat] Calling Hugging Face Inference...");
-
-        const models = [
-            "microsoft/Phi-3.5-mini-instruct",
-            "meta-llama/Llama-3.2-3B-Instruct",
-            "HuggingFaceTB/SmolLM2-1.7B-Instruct"
-        ];
+        console.log("[Chat] Calling LLM (Gemini primary, HF fallback)...");
 
         let englishResponse = "";
         let success = false;
         let lastError;
+        let modelSource = "unknown";
 
-        for (const model of models) {
-            try {
-                console.log(`Trying model: ${model}`);
-                const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
-                    method: "POST",
-                    headers: {
-                        Authorization: `Bearer ${process.env.HF_TOKEN}`,
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        model: model,
-                        messages: [
-                            { role: "system", content: systemPrompt },
-                            { role: "user", content: `[Location: ${sanitizedLocation}] ${englishQuery}` }
-                        ],
-                        max_tokens: 250,
-                        temperature: 0.7,
-                    }),
-                });
+        // Try Gemini first
+        try {
+            console.log("[Chat] Trying Gemini gemini-2.0-flash...");
+            const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+            const result = await geminiModel.generateContent(
+                `${systemPrompt}\n\nUser: [Location: ${sanitizedLocation}] ${englishQuery}`
+            );
+            const text = result.response.text();
+            if (text) {
+                englishResponse = text;
+                modelSource = "Gemini/gemini-2.0-flash";
+                success = true;
+                console.log("[Chat] Gemini succeeded");
+            }
+        } catch (err) {
+            console.warn("[Chat] Gemini failed:", err);
+            lastError = err;
+        }
 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`HF API error: ${response.status} ${errorText}`);
+        // Fallback: HF Inference Router
+        if (!success) {
+            const models = [
+                "Qwen/Qwen2.5-72B-Instruct",
+                "mistralai/Mistral-7B-Instruct-v0.3",
+            ];
+
+            for (const model of models) {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000);
+                try {
+                    console.log(`[Chat] Trying HF model: ${model}`);
+                    const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
+                        method: "POST",
+                        headers: {
+                            Authorization: `Bearer ${process.env.HF_TOKEN}`,
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            model: model,
+                            messages: [
+                                { role: "system", content: systemPrompt },
+                                { role: "user", content: `[Location: ${sanitizedLocation}] ${englishQuery}` }
+                            ],
+                            max_tokens: 250,
+                            temperature: 0.7,
+                        }),
+                        signal: controller.signal,
+                    });
+                    clearTimeout(timeoutId);
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`HF API error: ${response.status} ${errorText}`);
+                    }
+
+                    const data = await response.json();
+                    if (data.choices && data.choices.length > 0 && data.choices[0].message) {
+                        englishResponse = data.choices[0].message.content || "";
+                        modelSource = `HF/${model}`;
+                        success = true;
+                        break;
+                    }
+                } catch (err: any) {
+                    clearTimeout(timeoutId);
+                    if (err?.name === "AbortError") {
+                        console.warn(`[Chat] HF Model ${model} timed out after 15s`);
+                    } else {
+                        console.warn(`[Chat] HF Model ${model} failed:`, err);
+                    }
+                    lastError = err;
                 }
-
-                const data = await response.json();
-                if (data.choices && data.choices.length > 0 && data.choices[0].message) {
-                    englishResponse = data.choices[0].message.content || "";
-                    success = true;
-                    break;
-                }
-            } catch (err) {
-                console.warn(`Model ${model} failed:`, err);
-                lastError = err;
             }
         }
 
         if (!success) {
-            throw lastError || new Error("All HF models failed.");
+            throw lastError || new Error("All LLM providers failed.");
         }
 
-        console.log(`[Chat] HF Response: "${englishResponse}"`);
+        console.log(`[Chat] Response from ${modelSource}: "${englishResponse}"`);
 
 
         // --- Step 4: Output Processing (Translation + TTS) ---

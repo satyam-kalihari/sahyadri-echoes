@@ -19,15 +19,10 @@ const Marker = dynamic(
     () => import("react-leaflet").then((mod) => mod.Marker),
     { ssr: false }
 );
-
-// We need a component that uses 'useMap' hook.
-// Since 'useMap' is exported from react-leaflet, we can't import it at top level if it crashes SSR.
-// However, hooks usually don't crash unless called.
-// BUT 'react-leaflet' import might crash. 
-// So we create a separate component file for the map logic that is client-side only.
-
-// A valid workaround: Create a wrapper component that dynamic imports the *Logic* component
-// which imports useMap.
+const CircleMarker = dynamic(
+    () => import("react-leaflet").then((mod) => mod.CircleMarker),
+    { ssr: false }
+);
 
 const MapLogic = dynamic(() => import("./MapLogic"), { ssr: false });
 
@@ -114,9 +109,10 @@ export const LOCATIONS: MapLocation[] = [
 
 interface MapViewProps {
     onLocationSelect?: (location: MapLocation) => void;
+    userLocation?: { latitude: number; longitude: number } | null;
 }
 
-export default function MapView({ onLocationSelect }: MapViewProps) {
+export default function MapView({ onLocationSelect, userLocation }: MapViewProps) {
     // Center of Maharashtra approx
     const center: [number, number] = [19.7515, 75.7139];
     const [selectedLoc, setSelectedLoc] = useState<MapLocation | undefined>();
@@ -198,6 +194,20 @@ export default function MapView({ onLocationSelect }: MapViewProps) {
                     >
                     </Marker>
                 ))}
+
+                {/* User GPS Location Marker */}
+                {userLocation && (
+                    <CircleMarker
+                        center={[userLocation.latitude, userLocation.longitude]}
+                        radius={10}
+                        pathOptions={{
+                            color: "#38bdf8",
+                            fillColor: "#0ea5e9",
+                            fillOpacity: 0.7,
+                            weight: 3,
+                        }}
+                    />
+                )}
 
                 <MapLogic selectedLocation={selectedLoc} />
             </MapContainer>
