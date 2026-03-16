@@ -18,26 +18,38 @@ const LANGUAGES = [
 ] as const;
 
 export default function Home() {
-  const [selectedLocation, setSelectedLocation] = useState<MapLocation | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<MapLocation | null>(
+    null,
+  );
   const [language, setLanguage] = useState<"en" | "mr" | "hi" | "gu">("en");
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [userLocation, setUserLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
 
   const handleLocationSelect = (loc: MapLocation) => {
     setSelectedLocation(loc);
   };
 
-  const handleUserLocation = (coords: { latitude: number; longitude: number }) => {
+  const handleUserLocation = (coords: {
+    latitude: number;
+    longitude: number;
+  }) => {
     setUserLocation(coords);
   };
 
-  const currentLangLabel = LANGUAGES.find((l) => l.code === language)?.label || "English";
+  const currentLangLabel =
+    LANGUAGES.find((l) => l.code === language)?.label || "English";
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-between relative bg-black overflow-hidden">
       {/* Map Container */}
       <div className="absolute inset-0 z-0">
-        <MapView onLocationSelect={handleLocationSelect} userLocation={userLocation} />
+        <MapView
+          onLocationSelect={handleLocationSelect}
+          userLocation={userLocation}
+        />
       </div>
 
       {/* Branding Overlay */}
@@ -59,7 +71,9 @@ export default function Home() {
           >
             <Languages className="w-4 h-4 text-teal-400" />
             <span className="text-sm font-medium">{currentLangLabel}</span>
-            <ChevronDown className={`w-3.5 h-3.5 opacity-60 transition-transform ${isLangMenuOpen ? "rotate-180" : ""}`} />
+            <ChevronDown
+              className={`w-3.5 h-3.5 opacity-60 transition-transform ${isLangMenuOpen ? "rotate-180" : ""}`}
+            />
           </button>
 
           <AnimatePresence>
@@ -69,7 +83,7 @@ export default function Home() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -10, scale: 0.95 }}
                 transition={{ duration: 0.12 }}
-                className="absolute right-0 top-full mt-2 w-36 bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden shadow-xl z-50 flex flex-col py-1"
+                className="absolute right-0 top-full mt-2 w-36 bg-black/90 backdrop-blur-xl border border-white/10   overflow-hidden shadow-xl z-50 flex flex-col py-1"
               >
                 {LANGUAGES.map((lang) => (
                   <button
@@ -78,10 +92,11 @@ export default function Home() {
                       setLanguage(lang.code);
                       setIsLangMenuOpen(false);
                     }}
-                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-white/10 ${language === lang.code
-                      ? "text-teal-400 font-medium bg-teal-900/20"
-                      : "text-slate-300"
-                      }`}
+                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-white/10 ${
+                      language === lang.code
+                        ? "text-teal-400 font-medium bg-teal-900/20"
+                        : "text-slate-300"
+                    }`}
                   >
                     {lang.label}
                   </button>
@@ -101,7 +116,11 @@ export default function Home() {
       <AnimatePresence mode="wait">
         {selectedLocation && (
           <div className="absolute bottom-8 right-8 z-50 pointer-events-auto">
-            <ChatWindow location={selectedLocation} language={language} />
+            <ChatWindow
+              location={selectedLocation}
+              language={language}
+              onClose={() => setSelectedLocation(null)}
+            />
           </div>
         )}
       </AnimatePresence>
