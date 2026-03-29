@@ -209,9 +209,119 @@ function buildMermaidLineChart(rows) {
   ].join("\n");
 }
 
+function buildErrorRateChart(rows) {
+  const xAxis = rows.map((row) => row.concurrency).join(", ");
+  const errorSeries = rows.map((row) => row.errorRatePct).join(", ");
+
+  return [
+    "```mermaid",
+    "xychart-beta",
+    '    title "Error rate vs concurrency"',
+    '    x-axis "Concurrent users" [' + xAxis + "]",
+    '    y-axis "Error rate (%)" 0 --> 100',
+    '    bar "Error %" [' + errorSeries + "]",
+    "```",
+  ].join("\n");
+}
+
+function buildThroughputChart(rows) {
+  const xAxis = rows.map((row) => row.concurrency).join(", ");
+  const throughputSeries = rows.map((row) => row.throughputRps).join(", ");
+  const maxThroughput = Math.max(...rows.map((row) => row.throughputRps), 1);
+  const yMax = Number((maxThroughput * 1.25).toFixed(3));
+
+  return [
+    "```mermaid",
+    "xychart-beta",
+    '    title "Throughput vs concurrency"',
+    '    x-axis "Concurrent users" [' + xAxis + "]",
+    '    y-axis "Throughput (req/s)" 0 --> ' + yMax,
+    '    bar "Throughput" [' + throughputSeries + "]",
+    "```",
+  ].join("\n");
+}
+
+function buildApdexChart(rows) {
+  const xAxis = rows.map((row) => row.concurrency).join(", ");
+  const apdexSeries = rows.map((row) => row.apdex).join(", ");
+
+  return [
+    "```mermaid",
+    "xychart-beta",
+    '    title "Apdex vs concurrency"',
+    '    x-axis "Concurrent users" [' + xAxis + "]",
+    '    y-axis "Apdex" 0 --> 1',
+    '    line "Apdex" [' + apdexSeries + "]",
+    "```",
+  ].join("\n");
+}
+
+function buildSloComplianceChart(rows) {
+  const xAxis = rows.map((row) => row.concurrency).join(", ");
+  const p95PassSeries = rows.map((row) => (row.p95SloPassed ? 1 : 0)).join(", ");
+  const errorPassSeries = rows.map((row) => (row.errorBudgetPassed ? 1 : 0)).join(", ");
+
+  return [
+    "```mermaid",
+    "xychart-beta",
+    '    title "SLO compliance by concurrency"',
+    '    x-axis "Concurrent users" [' + xAxis + "]",
+    '    y-axis "Pass (1) / Fail (0)" 0 --> 1',
+    '    bar "P95 SLO" [' + p95PassSeries + "]",
+    '    bar "Error Budget" [' + errorPassSeries + "]",
+    "```",
+  ].join("\n");
+}
+
+function buildKpiSummary(rows) {
+  const weightedLatency = Number(
+    (
+      rows.reduce((sum, row) => sum + row.avgMs * row.requests, 0) /
+      Math.max(1, rows.reduce((sum, row) => sum + row.requests, 0))
+    ).toFixed(2)
+  );
+
+  const weightedErrorRate = Number(
+    (
+      rows.reduce((sum, row) => sum + row.errorRatePct * row.requests, 0) /
+      Math.max(1, rows.reduce((sum, row) => sum + row.requests, 0))
+    ).toFixed(2)
+  );
+
+  const avgThroughput = Number(
+    (rows.reduce((sum, row) => sum + row.throughputRps, 0) / Math.max(1, rows.length)).toFixed(3)
+  );
+
+  const avgApdex = Number(
+    (rows.reduce((sum, row) => sum + row.apdex, 0) / Math.max(1, rows.length)).toFixed(3)
+  );
+
+  const totalChecks = rows.length * 2;
+  const passedChecks = rows.filter((row) => row.p95SloPassed).length + rows.filter((row) => row.errorBudgetPassed).length;
+  const compliancePct = Number(((passedChecks / Math.max(1, totalChecks)) * 100).toFixed(2));
+
+  return [
+    "## KPI Summary",
+    "",
+    "| KPI | Value |",
+    "|---|---:|",
+    `| Weighted average latency (ms) | ${weightedLatency} |`,
+    `| Weighted average error rate (%) | ${weightedErrorRate} |`,
+    `| Average throughput (req/s) | ${avgThroughput} |`,
+    `| Average Apdex | ${avgApdex} |`,
+    `| Overall SLO compliance (%) | ${compliancePct} |`,
+    "",
+  ].join("\n");
+}
+
 function buildMarkdownReport(rows, startedAtIso) {
   const table = formatTable(rows);
   const chart = buildMermaidLineChart(rows);
+  const errorRateChart = buildErrorRateChart(rows);
+  const throughputChart = buildThroughputChart(rows);
+  const apdexChart = buildApdexChart(rows);
+  const sloChart = buildSloComplianceChart(rows);
+  const kpiSummary = buildKpiSummary(rows);
   const analysis = buildAnalysis(rows);
 
   return [
@@ -229,9 +339,27 @@ function buildMarkdownReport(rows, startedAtIso) {
     "",
     chart,
     "",
+    "## Error Rate Graph",
+    "",
+    errorRateChart,
+    "",
+    "## Throughput Graph",
+    "",
+    throughputChart,
+    "",
+    "## Apdex Graph",
+    "",
+    apdexChart,
+    "",
+    "## SLO Compliance Graph",
+    "",
+    sloChart,
+    "",
     "## Results",
     "",
     table,
+    "",
+    kpiSummary,
     "",
     analysis,
     "",

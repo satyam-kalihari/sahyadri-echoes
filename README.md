@@ -63,3 +63,12 @@ Optional environment variables:
 The test writes a report with a Mermaid line chart to:
 
 - `reports/chat-performance-report.md`
+
+The generated dashboard includes:
+
+- Latency (Average and P95) vs concurrency
+- Error rate vs concurrency
+- Throughput vs concurrency
+- Apdex vs concurrency
+- SLO compliance (P95 SLO and Error Budget)
+- KPI summary + automated analysis
