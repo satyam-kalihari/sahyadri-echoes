@@ -59,6 +59,10 @@ Optional environment variables:
 - `PERF_SLO_P95_MS` (default: `12000`)
 - `PERF_MAX_ERROR_RATE` (default: `5`)
 - `PERF_APDEX_T_MS` (default: `4000`)
+- `PERF_EXPORT_PNG` (default: `true`)
+- `PERF_PNG_WIDTH` (default: `1200`)
+- `PERF_PNG_HEIGHT` (default: `700`)
+- `PERF_PNG_DPR` (default: `2`)
 
 The test writes a report with a Mermaid line chart to:
 
@@ -72,3 +76,7 @@ The generated dashboard includes:
 - Apdex vs concurrency
 - SLO compliance (P95 SLO and Error Budget)
 - KPI summary + automated analysis
+
+PNG exports are generated in:
+
+- `reports/performance-png/`
