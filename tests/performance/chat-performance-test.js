@@ -1,0 +1,270 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+const fs = require("fs");
+const path = require("path");
+
+if (typeof fetch !== "function") {
+  console.error("Global fetch is not available. Use Node.js 18+.");
+  process.exit(1);
+}
+
+const targetUrl = process.env.PERF_URL || "http://localhost:3000/api/chat";
+const concurrencyLevels = [1, 3, 5, 10];
+const requestsPerLevel = Number(process.env.PERF_REQUESTS || 20);
+const timeoutMs = Number(process.env.PERF_TIMEOUT_MS || 25000);
+const p95SloMs = Number(process.env.PERF_SLO_P95_MS || 12000);
+const maxErrorRatePct = Number(process.env.PERF_MAX_ERROR_RATE || 5);
+const apdexTMs = Number(process.env.PERF_APDEX_T_MS || 4000);
+
+const payload = {
+  messages: [{ role: "user", content: "Tell me a short history of this place." }],
+  location: { name: "Ajanta Caves" },
+  language: "en",
+};
+
+function percentile(sortedValues, p) {
+  if (sortedValues.length === 0) return 0;
+  const index = Math.min(
+    sortedValues.length - 1,
+    Math.max(0, Math.ceil((p / 100) * sortedValues.length) - 1)
+  );
+  return sortedValues[index];
+}
+
+async function makeRequest() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = Date.now();
+
+  try {
+    const response = await fetch(targetUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    const elapsedMs = Date.now() - startedAt;
+    let body = {};
+
+    try {
+      body = await response.json();
+    } catch {
+      body = {};
+    }
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      elapsedMs,
+      hasContent: typeof body.content === "string" && body.content.length > 0,
+    };
+  } catch (error) {
+    const elapsedMs = Date.now() - startedAt;
+    return {
+      ok: false,
+      status: 0,
+      elapsedMs,
+      hasContent: false,
+      error: error && error.name ? error.name : "RequestError",
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function runLevel(concurrency, totalRequests) {
+  const results = [];
+  let launched = 0;
+  let completed = 0;
+  const levelStartedAt = Date.now();
+
+  return new Promise((resolve) => {
+    function launchNext() {
+      while (launched - completed < concurrency && launched < totalRequests) {
+        launched += 1;
+
+        makeRequest().then((result) => {
+          results.push(result);
+          completed += 1;
+
+          if (completed === totalRequests) {
+            resolve({
+              results,
+              durationMs: Date.now() - levelStartedAt,
+            });
+            return;
+          }
+
+          launchNext();
+        });
+      }
+    }
+
+    launchNext();
+  });
+}
+
+function summarizeResults(concurrency, levelData) {
+  const results = levelData.results;
+  const durationMs = Math.max(1, levelData.durationMs);
+  const latency = results.map((r) => r.elapsedMs).sort((a, b) => a - b);
+  const successCount = results.filter((r) => r.ok && r.hasContent).length;
+  const errorCount = results.length - successCount;
+  const successRatePct = Number(((successCount / results.length) * 100).toFixed(2));
+  const throughputRps = Number((results.length / (durationMs / 1000)).toFixed(3));
+
+  const satisfied = latency.filter((ms) => ms <= apdexTMs).length;
+  const tolerating = latency.filter((ms) => ms > apdexTMs && ms <= apdexTMs * 4).length;
+  const apdex = Number(((satisfied + tolerating / 2) / results.length).toFixed(3));
+
+  const p95Ms = percentile(latency, 95);
+  const errorRatePct = Number(((errorCount / results.length) * 100).toFixed(2));
+
+  return {
+    concurrency,
+    requests: results.length,
+    durationMs,
+    successCount,
+    successRatePct,
+    errorCount,
+    errorRatePct,
+    throughputRps,
+    apdex,
+    avgMs: Number((latency.reduce((a, b) => a + b, 0) / latency.length).toFixed(2)),
+    p50Ms: percentile(latency, 50),
+    p95Ms,
+    maxMs: latency.length > 0 ? latency[latency.length - 1] : 0,
+    p95SloPassed: p95Ms <= p95SloMs,
+    errorBudgetPassed: errorRatePct <= maxErrorRatePct,
+  };
+}
+
+function formatTable(rows) {
+  const header = "| Concurrency | Requests | Success % | Error % | Avg (ms) | P50 (ms) | P95 (ms) | Max (ms) | Throughput (req/s) | Apdex | P95 SLO | Error Budget |";
+  const separator = "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|";
+  const lines = rows.map((row) => {
+    return `| ${row.concurrency} | ${row.requests} | ${row.successRatePct} | ${row.errorRatePct} | ${row.avgMs} | ${row.p50Ms} | ${row.p95Ms} | ${row.maxMs} | ${row.throughputRps} | ${row.apdex} | ${row.p95SloPassed ? "PASS" : "FAIL"} | ${row.errorBudgetPassed ? "PASS" : "FAIL"} |`;
+  });
+
+  return [header, separator, ...lines].join("\n");
+}
+
+function buildAnalysis(rows) {
+  const byP95 = [...rows].sort((a, b) => a.p95Ms - b.p95Ms);
+  const byThroughput = [...rows].sort((a, b) => b.throughputRps - a.throughputRps);
+  const byError = [...rows].sort((a, b) => a.errorRatePct - b.errorRatePct);
+
+  const bestLatency = byP95[0];
+  const bestThroughput = byThroughput[0];
+  const mostReliable = byError[0];
+
+  const stableCandidates = rows.filter((row) => row.p95SloPassed && row.errorBudgetPassed);
+  const recommended = stableCandidates.sort((a, b) => b.throughputRps - a.throughputRps)[0] || null;
+
+  const warningRows = rows.filter((row) => !row.p95SloPassed || !row.errorBudgetPassed);
+
+  const lines = [
+    "## Performance Metrics Analysis",
+    "",
+    `- Best latency (lowest P95): concurrency ${bestLatency.concurrency} with ${bestLatency.p95Ms} ms`,
+    `- Best throughput: concurrency ${bestThroughput.concurrency} with ${bestThroughput.throughputRps} req/s`,
+    `- Most reliable (lowest error): concurrency ${mostReliable.concurrency} with ${mostReliable.errorRatePct}% error`,
+  ];
+
+  if (recommended) {
+    lines.push(`- Recommended operating point: concurrency ${recommended.concurrency} (meets P95 and error budget with ${recommended.throughputRps} req/s)`);
+  } else {
+    lines.push("- Recommended operating point: none met both P95 SLO and error budget in this run");
+  }
+
+  if (warningRows.length > 0) {
+    lines.push("- Risk flags:");
+    warningRows.forEach((row) => {
+      const reasons = [];
+      if (!row.p95SloPassed) reasons.push(`P95>${p95SloMs}ms`);
+      if (!row.errorBudgetPassed) reasons.push(`error>${maxErrorRatePct}%`);
+      lines.push(`  - concurrency ${row.concurrency}: ${reasons.join(", ")}`);
+    });
+  }
+
+  return lines.join("\n");
+}
+
+function buildMermaidLineChart(rows) {
+  const xAxis = rows.map((row) => row.concurrency).join(", ");
+  const avgSeries = rows.map((row) => row.avgMs).join(", ");
+  const p95Series = rows.map((row) => row.p95Ms).join(", ");
+
+  return [
+    "```mermaid",
+    "xychart-beta",
+    '    title "Chat API latency vs concurrency"',
+    '    x-axis "Concurrent users" [' + xAxis + "]",
+    '    y-axis "Latency (ms)" 0 --> 30000',
+    '    line "Average" [' + avgSeries + "]",
+    '    line "P95" [' + p95Series + "]",
+    "```",
+  ].join("\n");
+}
+
+function buildMarkdownReport(rows, startedAtIso) {
+  const table = formatTable(rows);
+  const chart = buildMermaidLineChart(rows);
+  const analysis = buildAnalysis(rows);
+
+  return [
+    "# Chat API Performance Report",
+    "",
+    "- Target: " + targetUrl,
+    "- Started: " + startedAtIso,
+    "- Requests per level: " + requestsPerLevel,
+    "- Timeout per request (ms): " + timeoutMs,
+    "- P95 SLO (ms): " + p95SloMs,
+    "- Max error rate (%): " + maxErrorRatePct,
+    "- Apdex T (ms): " + apdexTMs,
+    "",
+    "## Latency Graph",
+    "",
+    chart,
+    "",
+    "## Results",
+    "",
+    table,
+    "",
+    analysis,
+    "",
+  ].join("\n");
+}
+
+async function main() {
+  const startedAtIso = new Date().toISOString();
+  console.log("Running chat performance test against " + targetUrl);
+
+  const summaries = [];
+
+  for (const concurrency of concurrencyLevels) {
+    console.log(`- Testing concurrency ${concurrency} with ${requestsPerLevel} requests`);
+    const levelData = await runLevel(concurrency, requestsPerLevel);
+    const summary = summarizeResults(concurrency, levelData);
+    summaries.push(summary);
+  }
+
+  console.log("\nSummary:\n");
+  console.log(formatTable(summaries));
+
+  const report = buildMarkdownReport(summaries, startedAtIso);
+  const outputDir = path.join(process.cwd(), "reports");
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  const outputFile = path.join(outputDir, "chat-performance-report.md");
+  fs.writeFileSync(outputFile, report, "utf8");
+
+  console.log("\nReport written to: " + outputFile);
+}
+
+main().catch((error) => {
+  console.error("Performance test failed:", error);
+  process.exit(1);
+});

@@ -34,3 +34,32 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Performance Testing (Chat API)
+
+This repo includes a load test for `POST /api/chat` with a generated latency graph.
+
+Run your app first:
+
+```bash
+npm run dev
+```
+
+In a second terminal, run the performance test:
+
+```bash
+npm run test:perf:chat
+```
+
+Optional environment variables:
+
+- `PERF_URL` (default: `http://localhost:3000/api/chat`)
+- `PERF_REQUESTS` (default: `20` per concurrency level)
+- `PERF_TIMEOUT_MS` (default: `25000`)
+- `PERF_SLO_P95_MS` (default: `12000`)
+- `PERF_MAX_ERROR_RATE` (default: `5`)
+- `PERF_APDEX_T_MS` (default: `4000`)
+
+The test writes a report with a Mermaid line chart to:
+
+- `reports/chat-performance-report.md`
